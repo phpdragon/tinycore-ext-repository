@@ -165,7 +165,7 @@ on current session terminal ${YELLOW}or open new session terminal${NORMAL}.
 
 Example:
     tc@~\$: source /etc/profile
-    tc@~\$: sqlplus  -V
+    tc@~\$: sqlplus -V
 
 EOF
 }
