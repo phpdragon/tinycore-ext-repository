@@ -1,0 +1,21 @@
+#!/bin/sh
+
+SRC_SYSCTL_CONF="/usr/local/share/iptables-services/sysctl.conf.default"
+SRC_IPTABLES_DATA="/usr/local/share/iptables-services/iptables.default"
+SRC_IP6TABLES_DATA="/usr/local/share/iptables-services/ip6tables.default"
+SRC_IPTABLES_CONF="/usr/local/share/iptables-services/iptables-config.default"
+SRC_IP6TABLES_CONF="/usr/local/share/iptables-services/ip6tables-config.default"
+
+SYSCTL_CONF="/etc/sysctl.conf"
+IPTABLES_DATA="/etc/sysconfig/iptables"
+IPTABLES_CONF="${IPTABLES_DATA}-config"
+IP6TABLES_DATA="/etc/sysconfig/ip6tables"
+IP6TABLES_CONF="${IP6TABLES_DATA}-config"
+
+mkdir -p /var/lock/subsys/
+
+[ -f "${SYSCTL_CONF}" ] || cp "${SRC_SYSCTL_CONF}" "${SYSCTL_CONF}"
+[ -f "${IPTABLES_DATA}" ] || cp "${SRC_IPTABLES_DATA}" "${IPTABLES_DATA}"
+[ -f "${IPTABLES_CONF}" ] || cp "${SRC_IPTABLES_CONF}" "${IPTABLES_CONF}"
+[ -f "${IP6TABLES_DATA}" ] || cp "${SRC_IP6TABLES_DATA}" "${IP6TABLES_DATA}"
+[ -f "${IP6TABLES_CONF}" ] || cp "${SRC_IP6TABLES_CONF}" "${IP6TABLES_CONF}"

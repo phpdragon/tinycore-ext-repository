@@ -1,0 +1,91 @@
+#!/bin/sh
+#
+# iptables	Start ip6tables firewall
+# source code coming: (CentOS 7) /usr/libexec/iptables/ip6tables.init
+#
+# chkconfig: 2345 08 92
+# description:	Starts, stops and saves ip6tables firewall
+#
+# config: /etc/sysconfig/ip6tables
+# config: /etc/sysconfig/ip6tables-config
+#
+### BEGIN INIT INFO
+# Provides: ip6tables
+# Required-Start:
+# Required-Stop:
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: start and stop ip6tables firewall
+# Description: Start, stop and save ip6tables firewall
+### END INIT INFO
+
+IPTABLES="ip6tables" #iptables for ipv4 | ip6tables for ipv6
+
+# Source function library.
+. /etc/init.d/iptables-functions
+
+case "$1" in
+  enable)
+    enable
+    ;;
+  disable)
+    disable
+    ;;
+  start)
+    [ -f "${VAR_SUBSYS_IPTABLES}" ] && exit 0
+    start
+    RETVAL=$?
+    ;;
+  stop)
+    [ "x${IPTABLES_SAVE_ON_STOP}" = "xyes" ] && save
+    stop
+    RETVAL=$?
+    ;;
+  restart|force-reload)
+    restart
+    RETVAL=$?
+    ;;
+  reload)
+    [ -e "${VAR_SUBSYS_IPTABLES}" ] && reload
+    RETVAL=$?
+    ;;
+  condrestart|try-restart)
+    [ ! -e "${VAR_SUBSYS_IPTABLES}" ] && exit 0
+    restart
+    RETVAL=$?
+    ;;
+  status)
+    status
+    RETVAL=$?
+    ;;
+  panic)
+    set_policy DROP
+    RETVAL=$?
+    ;;
+  save)
+    save
+    RETVAL=$?
+    ;;
+  *)
+    iptables_cmd_tip="${BLUE}${IPTABLES}${NORMAL}"
+    cat <<EOF
+${RED}Usage:${NORMAL} ${iptables_cmd_tip} ${MAGENTA}{enable|disable|start|stop|reload|restart|condrestart|status|panic|save}${NORMAL}
+       ${iptables_cmd_tip} ${MAGENTA}enable${NORMAL}         Enable the firewall service, follow system startup
+       ${iptables_cmd_tip} ${MAGENTA}disable${NORMAL}        Disable the firewall service, don't follow system startup
+       ${iptables_cmd_tip} ${MAGENTA}start${NORMAL}          Start the firewall service
+       ${iptables_cmd_tip} ${MAGENTA}stop${NORMAL}           Stop the firewall service
+       ${iptables_cmd_tip} ${MAGENTA}reload${NORMAL}         Reload the firewall configuration form /etc/sysconfig/iptables
+       ${iptables_cmd_tip} ${MAGENTA}restart${NORMAL}        Restart the firewall configuration
+       ${iptables_cmd_tip} ${MAGENTA}condrestart${NORMAL}
+       ${iptables_cmd_tip} ${MAGENTA}try-restart${NORMAL}    Try restart the firewall configuration
+       ${iptables_cmd_tip} ${MAGENTA}status${NORMAL}         Checking firewall Status
+       ${iptables_cmd_tip} ${MAGENTA}panic${NORMAL}          Change policy on firewall all chain to DROP,${YELLOW}please use with caution !${NORMAL}
+       ${iptables_cmd_tip} ${MAGENTA}save${NORMAL}           Save firewall current configuration to /etc/sysconfig/iptables
+                               and backup last configuration to /etc/sysconfig/iptables.last
+
+EOF
+    RETVAL=2
+    ;;
+esac
+
+exit ${RETVAL}

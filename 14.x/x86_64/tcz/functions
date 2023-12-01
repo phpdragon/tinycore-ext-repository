@@ -1,0 +1,186 @@
+# -*-Shell-script-*-
+#
+# functions This file contains functions to be used by most or all
+#
+
+# Make sure umask is sane
+umask 022
+
+# Source function library.
+. /etc/init.d/tc-functions
+
+# Source profile.
+source /etc/profile
+
+# Set up a default search path.
+PATH="$PATH:/usr/local/sbin:/usr/local/bin"
+export PATH
+
+THIS=$(basename "$0")
+WORK_DIR=$(cd $(dirname $0);pwd)
+LOG="${WORK_DIR}/${THIS}.log"
+
+EXT_NAME=$(basename "${WORK_DIR}")
+EXT_SRC_DIR="${WORK_DIR}/src"
+TCZ_NAME="${EXT_NAME}.tcz"
+EXT_OUT_PUT_DIR="${WORK_DIR}/output/"
+EXT_OUT_PUT_FILE="${EXT_OUT_PUT_DIR}/${TCZ_NAME}"
+EXT_MOUNT_DIR="/tmp/tcloop/${EXT_NAME}"
+
+TC_USER_AND_GROUP="$(cat /etc/sysconfig/tcuser):staff"
+TC_PROFILE_DIR="/etc/profile.d"
+TC_USR_LOCAL_DIR="/usr/local"
+TC_USR_LOCAL_ETC_INIT_DIR="/usr/local/etc/init.d"
+
+TC_OPT_FILE_TOOL_LST="/opt/.filetool.lst"
+TC_OPT_BOOT_LOCAL_SH="/opt/bootlocal.sh"
+
+ON_BOOT_NAME="$(getbootparam lst 2>/dev/null)"
+[ -n "${ON_BOOT_NAME}" ] || ON_BOOT_NAME="onboot.lst"
+
+TCE_DIR="/etc/sysconfig/tcedir"
+TCE_INSTALLED_DIR="${TC_USR_LOCAL_DIR}/tce.installed"
+TCE_OPTIONAL_DIR="${TCE_DIR}/optional"
+TCE_ON_BOOT_FILE="${TCE_DIR}/${ON_BOOT_NAME}"
+TCE_OPTIONAL_EXT_FILE="${TCE_OPTIONAL_DIR}/${TCZ_NAME}"
+
+die() {
+    # shellcheck disable=SC2048
+    echo "${RED}$*${NORMAL}"
+    echo ""
+    exit 1
+}
+
+check_not_root(){
+    # shellcheck disable=SC2046
+    if [ $(/usr/bin/id -u) -eq 0 ]; then
+     die "You can only run ${THIS} by root!"
+    fi
+}
+
+# shellcheck disable=SC2120
+ask_build_clean(){
+    if [ "$1" == "ask" ];then
+        echo ""
+        # shellcheck disable=SC2162
+        read -n 1 -p "Do you want to keep the build files ? (y/n) [n]:" answer
+        case ${answer} in
+           y | Y)
+              echo ""
+              return 1
+              ;;
+           *)
+              echo ""
+              return 0
+              ;;
+        esac
+    fi
+    return 1
+}
+
+build_clean() {
+  unlink "${LOG}" 2>/dev/null
+
+  if ask_build_clean "$1" ;then
+      # shellcheck disable=SC2164
+      cd "${EXT_OUT_PUT_DIR}"
+      rm -f "${TCZ_NAME}"* 2>/dev/null
+  fi
+}
+
+install_squashfs(){
+  installed=$(command -v "mksquashfs")
+  if [ ! "${installed}" ] ; then
+    tce-load -wi "squashfs-tools" || die "You need install mksquashfs, please execute: \"tce-load -wi squashfs-tools\""
+    echo ""
+  fi
+}
+
+create_tcz(){
+  # shellcheck disable=SC2039
+  echo -e "Creating ${TCZ_NAME}... \c"
+  build_tcz >> "${LOG}" 2>&1
+  # shellcheck disable=SC2181
+  if [ $? -gt 0 ]
+  then
+       echo "failed !"
+       echo "See ${LOG} for details"
+       return 1
+  else
+      echo "successful ! "
+      echo ""
+      echo "The build files are in the directory :"
+      echo "${EXT_OUT_PUT_DIR}"
+      echo ""
+      return 0
+  fi
+}
+
+build_install() {
+    # shellcheck disable=SC2164
+    cd "${WORK_DIR}"
+
+    cp -f "${EXT_OUT_PUT_FILE}"* "${TCE_OPTIONAL_DIR}" || return 1
+
+    chmod -R 664 "${TCE_OPTIONAL_DIR}/${TCZ_NAME}"*
+    chown -R tc:staff "${TCE_OPTIONAL_DIR}/${TCZ_NAME}"*
+
+    tce-load -if "${TCE_OPTIONAL_DIR}/${TCZ_NAME}" || return 1
+    grep -q "^${TCZ_NAME}" "${TCE_ON_BOOT_FILE}" || echo "${TCZ_NAME}" >> "${TCE_ON_BOOT_FILE}"
+
+    return 0
+}
+
+install_tcz(){
+  # shellcheck disable=SC2039
+  echo -e "Installing ${TCZ_NAME}... \c"
+  build_install > "${LOG}" 2>&1
+  # shellcheck disable=SC2181
+  if [ $? -gt 0 ]
+  then
+       echo "failed !"
+       echo "See ${LOG} for details"
+       return 1
+  else
+      echo "successful ! "
+      return 0
+  fi
+}
+
+ask_backup() {
+  echo ""
+  # shellcheck disable=SC2162
+  read -n 1 -p "Are you sure you want to backup now ? (y/n) [n]:" answer
+
+  case ${answer} in
+     y | Y)
+        echo ""
+        echo ""
+        echo "In backup......"
+        filetool.sh -b
+        ;;
+     *)
+        echo ""
+        ;;
+  esac
+}
+
+ask_reboot() {
+    echo ""
+    # shellcheck disable=SC2162
+    read -n 1 -p "${YELLOW}Are you sure you want to reboot now ?${NORMAL} (y/n) [n]:" answer
+
+    case ${answer} in
+       y | Y)
+          echo ""
+          echo ""
+          echo "Rebooting......"
+          echo ""
+          sudo reboot
+          ;;
+       *)
+          echo ""
+          echo ""
+          ;;
+    esac
+}
