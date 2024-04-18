@@ -66,14 +66,17 @@ build_env_init(){
 +-----------------------------------------------------+
 autoconf
 automake
+m4
 pkg-config
 gcc
+libtool
 ncursesw-dev
 glibc => glibc_base-dev
+glibc-lib => glibc_add_lib
 headers => linux-6.1_api_headers
 ==>
 EOF
-    tce-load -wi autoconf automake pkg-config m4 gcc ncursesw-dev make glibc_base-dev linux-6.1_api_headers || return 1
+    tce-load -wi autoconf automake m4 pkg-config gcc ncursesw ncursesw-dev make glibc_base-dev glibc_add_lib linux-6.1_api_headers || return 1
     cat <<EOF
 -------------------------------------------------------
 
@@ -177,3 +180,4 @@ EOF
 }
 
 main
+
