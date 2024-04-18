@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-#  lrzsz installer for Tiny Core Linux
+#  htop installer for Tiny Core Linux
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -28,14 +28,14 @@ HERE="$(cd $(dirname $0);pwd)"
 check_not_root
 
 # pkg architecture
-SITE="https://www.ohse.de/uwe/software/lrzsz.html"
+SITE="https://htop.dev/downloads.html or https://github.com/htop-dev/htop/releases"
 
 # shellcheck disable=SC2125
-SOURCE_PACKAGE="/tmp/lrzsz-"*".tar.gz"
+SOURCE_PACKAGE="/tmp/htop-"*".tar.xz"
 # shellcheck disable=SC2012
-SOURCE_PACKAGE_FILE=$(ls "/tmp/lrzsz-"*".tar.gz" 2> /dev/null | tail -1)
-PACKAGE_FILE_NAME=$(echo "$SOURCE_PACKAGE_FILE"|sed 's|/tmp/||'|sed 's|.tar.gz||')
-
+SOURCE_PACKAGE_FILE=$(ls "/tmp/htop-"*".tar.xz" 2> /dev/null | tail -1)
+PACKAGE_FILE_NAME=$(echo "$SOURCE_PACKAGE_FILE"|sed 's|/tmp/||'|sed 's|.tar.xz||')
+PKG_VERSION=$(echo "$SOURCE_PACKAGE_FILE"|awk -F '-' '{print $2}'|sed 's|.tar.xz||')
 build_usage_tip() {
       cat <<EOF
 =======================================================
@@ -44,7 +44,7 @@ build_usage_tip() {
          Updated by phpdragon <phpdragon@qq.com>
 =======================================================
 
-Before proceeding You must download ${SOURCE_PACKAGE:-/tmp/lrzsz-*.tar.gz}
+Before proceeding You must download ${SOURCE_PACKAGE:-/tmp/htop-*.tar.xz}
 from $SITE
 to /tmp directory !
 
@@ -64,13 +64,16 @@ build_env_init(){
 +-----------------------------------------------------+
 | Install the necessary dependent environments, list: |
 +-----------------------------------------------------+
+autoconf
+automake
+pkg-config
 gcc
-make
+ncursesw-dev
 glibc => glibc_base-dev
 headers => linux-6.1_api_headers
 ==>
 EOF
-    tce-load -wi gcc make glibc_base-dev linux-6.1_api_headers || return 1
+    tce-load -wi autoconf automake pkg-config m4 gcc ncursesw-dev make glibc_base-dev linux-6.1_api_headers || return 1
     cat <<EOF
 -------------------------------------------------------
 
@@ -122,26 +125,23 @@ EOF
 build_pkg_src() {
   tar xf "${SOURCE_PACKAGE_FILE}" -C "/tmp" || return 1
   cd "/tmp/${PACKAGE_FILE_NAME}" || return 1
+  ./autogen.sh
   ./configure --prefix=/usr/local
   make -j"${CORES_COUNT}"
 
-  cd "/tmp/${PACKAGE_FILE_NAME}/src" || return 1
-
   mkdir -p "${SRC_USR_LOCAL_DIR}"
   mkdir -p "${SRC_USR_LOCAL_BIN_DIR}"
-  mkdir -p "${SRC_USR_LOCAL_DIR}/man/man1/"
+  mkdir -p "${SRC_USR_LOCAL_DIR}/share/icons/hicolor/scalable/apps/"
+  mkdir -p "${SRC_USR_LOCAL_DIR}/share/applications/"
+  mkdir -p "${SRC_USR_LOCAL_DIR}/share/pixmaps/"
+  mkdir -p "${SRC_USR_LOCAL_DIR}/share/man/man1/"
   mkdir -p "${EXT_OUT_PUT_DIR}"
 
-  cp lrz lsz "${SRC_USR_LOCAL_BIN_DIR}"
-  cd "${SRC_USR_LOCAL_BIN_DIR}" || return 1
-  ln -s lrz lrb
-  ln -s lrz lrx
-  ln -s lrz rz
-  ln -s lsz lsb
-  ln -s lsz lsx
-  ln -s lsz sz
-  cd "/tmp/${PACKAGE_FILE_NAME}/man" || return 1
-  cp lrz.1 lsz.1 "${SRC_USR_LOCAL_DIR}/man/man1/"
+  cp htop "${SRC_USR_LOCAL_BIN_DIR}"
+  cp htop.svg "${SRC_USR_LOCAL_DIR}/share/icons/hicolor/scalable/apps/"
+  cp htop.desktop "${SRC_USR_LOCAL_DIR}/share/applications/"
+  cp htop.png "${SRC_USR_LOCAL_DIR}/share/pixmaps/"
+  cp htop.1 "${SRC_USR_LOCAL_DIR}/share/man/man1/"
 
   rm -rf "/tmp/${PACKAGE_FILE_NAME}"
 
@@ -149,23 +149,22 @@ build_pkg_src() {
 }
 
 get_pkg_info() {
-    size=$(du -h "${EXT_OUT_PUT_FILE}"|awk '{print $1}')
+  size=$(du -h "${EXT_OUT_PUT_FILE}"|awk '{print $1}')
 
-    cat <<EOF
+  cat <<EOF
 Title:          ${TCZ_NAME}
-Description:    Free x/y/zmodem implementation
-Version:        0.12.20
-Author:         Chuck Forsberg, Matt Porter, mblack@csihq.com, Uwe Ohse
-Original-site:  https://www.ohse.de/uwe/software/lrzsz.html
+Description:    Interactive process viewer
+Version:        ${PKG_VERSION}
+Author:         Hisham H. Muhammad
+Original-site:  https://htop.dev/
 Copying-policy: GPL v2
 Size:           ${size}
 Extension_by:   phpdragon <phpdragon@qq.com>
-Tags:           CLI COMMUNICATION TERMINAL XMODEM ZMODEM YMODEM
+Tags:           SYSTEM CLI
 Comments:       Binaries only
                 ----
-                Compiled for Core ${OS_TRUNK_VERSION}.x
-Change-log:     ${CURRENT_DAY} Original for TC ${OS_TRUNK_VERSION}.x
-Current:        2016/04/02 First version, 0.12.20
+Change-log:     ----
+Current:        ${CURRENT_DAY} Original for TC ${OS_TRUNK_VERSION}.x
 EOF
 }
 
