@@ -1,0 +1,350 @@
+# -*-Shell-script-*-
+#
+# functions This file contains functions to be used by most or all
+#
+
+# Make sure umask is sane
+umask 022
+
+# Source function library.
+. /etc/init.d/tc-functions
+
+# Source profile.
+source /etc/profile
+
+# Set up a default search path.
+PATH="$PATH:/usr/local/sbin:/usr/local/bin"
+export PATH
+
+# shellcheck disable=SC2002
+# shellcheck disable=SC2126
+CORES_COUNT=$(cat /proc/cpuinfo|grep processor|wc -l)
+# shellcheck disable=SC2002
+OS_VERSION=$(cat /etc/os-release|grep 'VERSION='|sed 's|VERSION=||g'| sed 's|"||g')
+OS_TRUNK_VERSION=$(echo "${OS_VERSION}"|awk -F '.' '{print $1}')
+# shellcheck disable=SC2034
+CURRENT_DAY=$(date +'%Y/%m/%d')
+
+THIS=$(basename "$0")
+WORK_DIR=$(cd $(dirname $0);pwd)
+CURRENT_DIR="${WORK_DIR}"
+LOG="${WORK_DIR}/${THIS}.log"
+
+EXT_NAME=$(basename "${WORK_DIR}")
+TCZ_NAME="${EXT_NAME}.tcz"
+EXT_OUT_PUT_DIR="${WORK_DIR}/output/"
+EXT_OUT_PUT_FILE="${EXT_OUT_PUT_DIR}/${TCZ_NAME}"
+EXT_MOUNT_DIR="/tmp/tcloop/${EXT_NAME}"
+
+TC_USER_AND_GROUP="$(cat /etc/sysconfig/tcuser):staff"
+TC_PROFILE_DIR="/etc/profile.d"
+TC_USR_LOCAL_DIR="/usr/local"
+TC_USR_LOCAL_ETC_INIT_DIR="/usr/local/etc/init.d"
+
+TC_OPT_FILE_TOOL_LST="/opt/.filetool.lst"
+TC_OPT_BOOT_LOCAL_SH="/opt/bootlocal.sh"
+
+ON_BOOT_NAME="$(getbootparam lst 2>/dev/null)"
+[ -n "${ON_BOOT_NAME}" ] || ON_BOOT_NAME="onboot.lst"
+
+TCE_DIR="/etc/sysconfig/tcedir"
+TCE_INSTALLED_DIR="${TC_USR_LOCAL_DIR}/tce.installed"
+TCE_OPTIONAL_DIR="${TCE_DIR}/optional"
+TCE_ON_BOOT_FILE="${TCE_DIR}/${ON_BOOT_NAME}"
+TCE_OPTIONAL_EXT_FILE="${TCE_OPTIONAL_DIR}/${TCZ_NAME}"
+
+# src directory structure
+PKG_HOME=${TC_USR_LOCAL_DIR}/${EXT_NAME}
+TC_PROFILE_SH="${TC_PROFILE_DIR}/${EXT_NAME}.sh"
+EXT_SRC_DIR="${WORK_DIR}/src"
+#
+SRC_USR_LOCAL_DIR="${EXT_SRC_DIR}${TC_USR_LOCAL_DIR}"
+SRC_USR_LOCAL_BIN_DIR="${EXT_SRC_DIR}${TC_USR_LOCAL_DIR}/bin"
+#
+SRC_TC_PROFILE_DIR="${EXT_SRC_DIR}${TC_PROFILE_DIR}"
+SRC_TC_PROFILE_SH="${EXT_SRC_DIR}${TC_PROFILE_SH}"
+#
+SRC_TCE_INSTALLED_DIR="${EXT_SRC_DIR}${TCE_INSTALLED_DIR}"
+SRC_TCE_INSTALLED_FILE="${SRC_TCE_INSTALLED_DIR}/${EXT_NAME}"
+#
+SRC_PKG_HOME="${SRC_USR_LOCAL_DIR}/${EXT_NAME}"
+
+func_exists () {
+  if type -f "$1" >/dev/null 2>&1;then
+    return 0
+  else
+    return 1
+  fi
+}
+
+die() {
+    # shellcheck disable=SC2048
+    echo "${RED}$*${NORMAL}"
+    echo ""
+    exit 1
+}
+
+check_not_root(){
+    # shellcheck disable=SC2046
+    if [ $(/usr/bin/id -u) -eq 0 ]; then
+     die "You can only run ${THIS} by root!"
+    fi
+}
+
+ask_backup() {
+  echo ""
+  # shellcheck disable=SC2162
+  read -n 1 -p "Are you sure you want to backup now ? (y/n) [n]:" answer
+
+  case ${answer} in
+     y | Y)
+        echo ""
+        echo ""
+        echo "In backup......"
+        filetool.sh -b
+        ;;
+     *)
+        echo ""
+        ;;
+  esac
+}
+
+ask_reboot() {
+    echo ""
+    # shellcheck disable=SC2162
+    read -n 1 -p "${YELLOW}Are you sure you want to reboot now ?${NORMAL} (y/n) [n]:" answer
+
+    case ${answer} in
+       y | Y)
+          echo ""
+          echo ""
+          echo "Rebooting......"
+          echo ""
+          sudo reboot
+          ;;
+       *)
+          echo ""
+          echo ""
+          ;;
+    esac
+}
+
+ask_clean_output_files(){
+    if [ "$1" != "ask" ];then
+      return 1
+    fi
+
+out_files=$(ls "${EXT_OUT_PUT_DIR}" -1)
+cat <<EOF
+
++-------------------------------------------------------+
+| Do you want to keep the following build output files: |
++-------------------------------------------------------+
+$out_files
+---------------------------------------------------------
+EOF
+    # shellcheck disable=SC2162
+    read -n 1 -p "keep them (y/n) [n]:" answer
+    case ${answer} in
+       y | Y)
+          echo ""
+          return 1
+          ;;
+       *)
+          echo ""
+          return 0
+          ;;
+    esac
+}
+
+clean_output_files() {
+  if ask_clean_output_files "$1" ;then
+      rm -rf "${EXT_OUT_PUT_DIR}" 2>/dev/null 2>&1
+  fi
+}
+
+build_init(){
+  echo ""
+  echo ""
+  # shellcheck disable=SC2046
+  if [ ! $(command -v "mksquashfs") ] ; then
+    cat <<EOF
+
++-------------------------------------------------------+
+| Install the necessary packaging tools: squashfs-tools |
++-------------------------------------------------------+
+==>
+EOF
+    tce-load -wi "squashfs-tools" || return 1
+        cat <<EOF
+---------------------------------------------------------
+
+EOF
+  fi
+
+  if func_exists "build_env_init" ; then
+    if ! build_env_init ; then
+      return 1
+    fi
+  fi
+
+  mkdir -p "${SRC_USR_LOCAL_DIR}"
+  mkdir -p "${EXT_OUT_PUT_DIR}"
+
+  return 0
+}
+
+build_pkg_source(){
+  echo -e "Build ${EXT_NAME} source package... \c"
+
+  build_pkg_src >> "${LOG}" 2>/dev/null 2>&1
+  # shellcheck disable=SC2181
+  if [ $? -gt 0 ]; then
+   echo "${RED}failed${NORMAL} !"
+   echo "See ${LOG} for details"
+   return 1
+  else
+    echo "${GREEN}successful${NORMAL} ! "
+    echo ""
+    return 0
+  fi
+}
+
+build_tcz_pkg() {
+  # shellcheck disable=SC2164
+  cd "${WORK_DIR}"
+
+  if [ -d "${SRC_USR_LOCAL_BIN_DIR}" ]; then
+      sudo chmod a+x "${SRC_USR_LOCAL_BIN_DIR}/*"
+  fi
+
+  if [ -f "${SRC_TC_PROFILE_SH}" ]; then
+      sudo chmod 775 "${SRC_TC_PROFILE_SH}"
+  fi
+
+  if [ -f "${SRC_TCE_INSTALLED_FILE}" ]; then
+      sudo chmod 775 "${SRC_TCE_INSTALLED_FILE}"
+  fi
+
+  sudo chown -R "${TC_USER_AND_GROUP}" "${EXT_SRC_DIR}"
+
+  mksquashfs "${EXT_SRC_DIR}" "${EXT_OUT_PUT_FILE}" || return 1
+
+  find "${EXT_SRC_DIR}" -not -type d | sed "s|${EXT_SRC_DIR}||g" > "${EXT_OUT_PUT_FILE}.list"
+  cd "${EXT_OUT_PUT_DIR}" && md5sum "${TCZ_NAME}" > "${EXT_OUT_PUT_FILE}.md5.txt"
+
+  pkg_info=$(get_pkg_info)
+  echo "${pkg_info}" > "${EXT_OUT_PUT_FILE}.info"
+
+  if func_exists "get_pkg_dep" ; then
+     dep_info=$(get_pkg_dep)
+     echo "${dep_info}" > "${EXT_OUT_PUT_FILE}.dep"
+  fi
+
+  if func_exists "get_pkg_tree" ; then
+     tree_info=$(get_pkg_tree)
+     echo "${tree_info}" > "${EXT_OUT_PUT_FILE}.tree"
+  fi
+
+  sudo chmod 664 "${EXT_OUT_PUT_FILE}"*
+  sudo chown "${TC_USER_AND_GROUP}" "${EXT_OUT_PUT_FILE}"*
+
+  [ -f "${EXT_OUT_PUT_FILE}" ] || return 1
+
+  return 0
+}
+
+build_tcz(){
+  echo -e "Building ${TCZ_NAME}... \c"
+
+  build_tcz_pkg >> "${LOG}" 2>/dev/null 2>&1
+  # shellcheck disable=SC2181
+  if [ $? -gt 0 ] ; then
+    echo "${RED}failed${NORMAL} !"
+    echo "See ${LOG} for details"
+    return 1
+  else
+    echo "${GREEN}successful${NORMAL} ! "
+    echo ""
+    echo "The build output files are in the directory:"
+    echo "${EXT_OUT_PUT_DIR}"
+    echo ""
+    return 0
+  fi
+}
+
+install_tcz_pkg() {
+    # shellcheck disable=SC2164
+    cd "${WORK_DIR}"
+
+    cp -f "${EXT_OUT_PUT_FILE}"* "${TCE_OPTIONAL_DIR}" || return 1
+
+    chmod -R 664 "${TCE_OPTIONAL_DIR}/${TCZ_NAME}"*
+    chown -R tc:staff "${TCE_OPTIONAL_DIR}/${TCZ_NAME}"*
+
+    tce-load -if "${TCE_OPTIONAL_DIR}/${TCZ_NAME}" || return 1
+    grep -q "^${TCZ_NAME}" "${TCE_ON_BOOT_FILE}" || echo "${TCZ_NAME}" >> "${TCE_ON_BOOT_FILE}"
+
+    return 0
+}
+
+install_tcz(){
+  echo -e "Installing ${TCZ_NAME}... \c"
+
+  install_tcz_pkg > "${LOG}" 2>/dev/null 2>&1
+  # shellcheck disable=SC2181
+  if [ $? -gt 0 ] ; then
+    echo "${RED}failed${NORMAL} !"
+    echo "See ${LOG} for details"
+    return 1
+  else
+    echo "${GREEN}successful${NORMAL} ! "
+    echo ""
+    return 0
+  fi
+}
+
+main() {
+    clear
+
+    if func_exists "build_usage_tip" ; then
+      build_usage_tip
+    fi
+
+    if func_exists "build_check" ; then
+      build_check || exit 1
+    fi
+
+    unlink "${LOG}" 2>/dev/null
+
+    build_init || die "Build ${EXT_NAME} initialization failed！"
+    build_pkg_source || exit 1
+    build_tcz || exit 1
+    install_tcz || exit 1
+
+    if func_exists "install_tcz_after" ; then
+      install_tcz_after
+    fi
+
+    if func_exists "clean_src_files" ; then
+      clean_src_files
+    fi
+
+    clean_output_files "ask"
+
+    if func_exists "clean_source_files" ; then
+      clean_source_files "ask"
+    fi
+
+    if func_exists "build_result_tip" ; then
+      build_result_tip
+    else
+      echo "${GREEN}Congratulations, All Done !${NORMAL}"
+    fi
+
+    if func_exists "build_finished" ; then
+      build_finished
+    fi
+
+    exit 0
+}

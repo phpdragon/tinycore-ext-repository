@@ -1,6 +1,0 @@
-#!/bin/sh
-
-. /etc/profile.d/oracle-jdk.sh
-
-[ -e /lib64 ] || [ "$(uname -m)" != "x86_64" ] || ln -s /lib /lib64
-

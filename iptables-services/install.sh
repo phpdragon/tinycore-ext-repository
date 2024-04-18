@@ -16,7 +16,7 @@
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-#  Copyright (c) 2023 phpdragon phpdragon@qq.com
+#  Copyright (c) 2023 phpdragon <phpdragon@qq.com>
 #
 
 HERE="$(cd $(dirname $0);pwd)"
@@ -40,58 +40,81 @@ IP6TABLES_CONFIG="${IP6TABLES_DATA}-config"
 IPTABLES_START_BIN="${TC_USR_LOCAL_ETC_INIT_DIR}/iptables"
 IP6TABLES_START_BIN="${TC_USR_LOCAL_ETC_INIT_DIR}/ip6tables"
 
-TMP_TCE_INSTALLED_FILE="${EXT_SRC_DIR}/${TCE_INSTALLED_DIR}/${EXT_NAME}"
-TMP_IPTABLES_START_BIN="${EXT_SRC_DIR}/${IPTABLES_START_BIN}"
-TMP_IP6TABLES_START_BIN="${EXT_SRC_DIR}/${IP6TABLES_START_BIN}"
+SRC_IPTABLES_START_BIN="${EXT_SRC_DIR}/${IPTABLES_START_BIN}"
+SRC_IP6TABLES_START_BIN="${EXT_SRC_DIR}/${IP6TABLES_START_BIN}"
 
-usage_tip(){
+build_usage_tip(){
     clear
     cat <<EOF
 ================================================================================================
 
 Iptables-services installer for Tiny Core Linux
-by phpdragon phpdragon@qq.com
+by phpdragon <phpdragon@qq.com>
 
 ================================================================================================
 
 EOF
     # shellcheck disable=SC2039
-    read -r -n 1 -p "Press any key to continue." -s
-    echo ""
-    echo ""
+    read -r -n 1 -p "Press any key to continue... " -s
 }
 
-build_init() {
-    tce-load -wi iptables || exit 1
-    install_squashfs
+build_env_init() {
+    return 0
+
+    cat  <<EOF
+
++-----------------------------------------------------+
+| Install the necessary dependent environments, list: |
++-----------------------------------------------------+
+iptables
+==>
+EOF
+    tce-load -wi iptabless || return 1
+    cat <<EOF
+-------------------------------------------------------
+
+EOF
     return 0
 }
 
-build_tcz() {
-  mksquashfs "${EXT_SRC_DIR}" "${EXT_OUT_PUT_FILE}" || exit 1
+build_env_init(){
+    cat  <<EOF
 
-  sudo chmod 775 "${TMP_IPTABLES_START_BIN}"
-  sudo chmod 775 "${TMP_IP6TABLES_START_BIN}"
-  sudo chmod 775 "${TMP_TCE_INSTALLED_FILE}"
-  sudo chown -R "${TC_USER_AND_GROUP}" "${EXT_SRC_DIR}"
++-----------------------------------------------------+
+| Install the necessary dependent environments, list: |
++-----------------------------------------------------+
+iptables
+==>
+EOF
+    tce-load -wi iptables || return 1
+    cat <<EOF
+-------------------------------------------------------
 
+EOF
+    return 0
+}
+
+build_pkg_src() {
+  sudo chmod 775 "${SRC_IPTABLES_START_BIN}"
+  sudo chmod 775 "${SRC_IP6TABLES_START_BIN}"
+
+  find "${EXT_SRC_DIR}" -type f -exec dos2unix {} \;
+
+  return 0
+}
+
+get_pkg_info() {
   size=$(du -h "${EXT_OUT_PUT_FILE}"|awk '{print $1}')
 
-  echo 'iptables.tcz' > "${EXT_OUT_PUT_FILE}.dep"
-  cat > "${EXT_OUT_PUT_FILE}.dep" <<EOF
-${TCZ_NAME}
-    iptables.tcz
-       ipv6-netfilter-6.1.2-tinycore.tcz
-EOF
-  cat > "${EXT_OUT_PUT_FILE}.info" <<EOF
+  cat <<EOF
 Title:          ${TCZ_NAME}
 Description:    start and stop iptables firewall
 Version:        1.0.0
 Author:         Red Hat, Inc.
 Original-site:  https://phpdragon.github.io/blog/
-Copying-policy: GPL
+Copying-policy: GPL v2
 Size:           ${size}
-Extension_by:   phpdragon
+Extension_by:   phpdragon <phpdragon@qq.com>
 Tags:           managing iptables firewall
 Comments:       a script to manage the iptables firewall
                 ----
@@ -102,23 +125,24 @@ Comments:       a script to manage the iptables firewall
                 iptables config file: /etc/sysconfig/iptables-config,/etc/sysconfig/ip6tables-config
                 Dependency config file: /etc/sysctl.conf
                 ----
-Change-log:     2023/12/01 Original for TC 14.x
-Current:        2023/12/01 Original for TC 14.x
+Change-log:     ${CURRENT_DAY} Original for TC ${OS_TRUNK_VERSION}.x
+Current:        ${CURRENT_DAY} Original for TC ${OS_TRUNK_VERSION}.x
 EOF
-  find "${EXT_SRC_DIR}" -not -type d | sed "s|${EXT_SRC_DIR}||g" > "${EXT_OUT_PUT_FILE}.list"
-  cd "${EXT_OUT_PUT_DIR}" && md5sum "${TCZ_NAME}" > "${EXT_OUT_PUT_FILE}.md5.txt"
-  cat > "${EXT_OUT_PUT_FILE}.tree" <<EOF
+}
+
+get_pkg_dep() {
+  echo 'iptables.tcz'
+}
+
+get_pkg_tree() {
+  cat <<EOF
 ${TCZ_NAME}
     iptables.tcz
         ipv6-netfilter-6.1.2-tinycore.tcz
 EOF
-
-  sudo chmod 664 "${EXT_OUT_PUT_FILE}"*
-  sudo chown "${TC_USER_AND_GROUP}" "${EXT_OUT_PUT_FILE}"*
-  return 0
 }
 
-config_persistence() {
+install_tcz_after() {
   if grep -q "^${SYSCTL_CONF}" "${TC_OPT_FILE_TOOL_LST}" \
                        && grep -q "^${IPTABLES_DATA}" "${TC_OPT_FILE_TOOL_LST}" \
                        && grep -q "^${IPTABLES_LAST_DATA}" "${TC_OPT_FILE_TOOL_LST}" \
@@ -140,7 +164,7 @@ EOF
     return $?
 }
 
-result_notice() {
+build_result_tip() {
   echo ""
   iptables_cmd_tip="${BLUE}${IPTABLES_START_BIN}${NORMAL}"
   cat <<EOF
@@ -178,17 +202,8 @@ ${RED}Native commands:${NORMAL}
 EOF
 }
 
-main() {
-  usage_tip
-  build_clean
-  build_init || exit 1
-  create_tcz || exit 1
-  install_tcz || exit 1
-  config_persistence || exit 1
-  build_clean "ask"
-  result_notice
+build_finished() {
   ask_backup
 }
 
 main
-
