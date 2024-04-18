@@ -70,7 +70,9 @@ m4
 pkg-config
 gcc
 libtool
+ncursesw
 ncursesw-dev
+make
 glibc => glibc_base-dev
 glibc-lib => glibc_add_lib
 headers => linux-6.1_api_headers
